@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>학점 계산기 · 목표 학점 플래너</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;600;700&display=swap">
+<style>
+:root{--bg:#eef2ef;--card:#fff;--ink:#14231d;--sub:#5b6b63;--line:#d3ddd7;--acc:#1f6f54;--acc-ink:#fff;--hi:#f2c94c;--bad:#b3261e;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1a15;--card:#18271f;--ink:#e8f1ec;--sub:#9fb3a8;--line:#2c4136;--acc:#4fc79a;--acc-ink:#07241a;--hi:#f2c94c;--bad:#ff8a80}}
+:root[data-theme="dark"]{--bg:#0f1a15;--card:#18271f;--ink:#e8f1ec;--sub:#9fb3a8;--line:#2c4136;--acc:#4fc79a;--acc-ink:#07241a;--hi:#f2c94c;--bad:#ff8a80}
+*{box-sizing:border-box}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"IBM Plex Sans KR",-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;line-height:1.5}
+main{max-width:520px;margin:0 auto;padding:20px 16px 48px}
+h1{font-size:22px;margin:4px 0 2px}
+.lead{color:var(--sub);font-size:14px;margin:0 0 18px}
+.hero{background:var(--acc);color:var(--acc-ink);border-radius:20px;padding:22px 20px;display:flex;align-items:flex-end;justify-content:space-between;gap:12px}
+.hero .gpa{font-size:64px;font-weight:700;line-height:1;letter-spacing:-2px}
+.hero .gpa small{font-size:18px;font-weight:400;letter-spacing:0;opacity:.8}
+.hero .meta{text-align:right;font-size:14px}
+.hero .meta b{display:block;font-size:20px}
+.bar{height:8px;border-radius:4px;background:rgba(255,255,255,.25);margin-top:14px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--hi);width:0;transition:width .4s}
+section{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-top:16px}
+h2{font-size:16px;margin:0 0 12px}
+.row{display:grid;grid-template-columns:1fr 64px 76px 36px;gap:6px;margin-bottom:8px}
+.head{color:var(--sub);font-size:12px;margin-bottom:4px}
+input,select,button{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:9px 8px;min-width:0;width:100%}
+input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+button{cursor:pointer;width:auto}
+.del{padding:0;height:40px;color:var(--sub)}
+.ghost{width:100%;margin-top:6px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+label{font-size:13px;color:var(--sub);display:block;margin-bottom:4px}
+.result{margin-top:14px;padding:14px;border-radius:12px;background:var(--bg);font-size:15px}
+.result b{font-size:24px}
+.bad{color:var(--bad)}
+.foot{color:var(--sub);font-size:12px;margin-top:18px;text-align:center}
+</style>
+</head>
+<body>
+<main>
+<h1>학점 계산기</h1>
+<p class="lead">과목을 입력하면 평점이 바로 계산되고, 목표까지 필요한 학점도 알려줘요. (4.5 만점 기준)</p>
+
+<div class="hero" aria-live="polite">
+  <div><div class="gpa"><span id="gpa">0.00</span> <small>/ 4.5</small></div></div>
+  <div class="meta"><span>반영 학점</span><b id="cred">0</b></div>
+</div>
+<div class="bar"><i id="bar"></i></div>
+
+<section>
+  <h2>수강 과목</h2>
+  <div class="row head"><span>과목명</span><span>학점</span><span>성적</span><span></span></div>
+  <div id="list"></div>
+  <button class="ghost" id="add">+ 과목 추가</button>
+</section>
+
+<section>
+  <h2>목표 학점 시뮬레이터</h2>
+  <div class="two">
+    <div><label for="goal">목표 평점</label><input id="goal" type="number" step="0.01" min="0" max="4.5" value="4.0" inputmode="decimal"></div>
+    <div><label for="left">남은 학점</label><input id="left" type="number" step="1" min="1" value="60" inputmode="numeric"></div>
+  </div>
+  <div class="result" id="sim" aria-live="polite"></div>
+</section>
+
+<p class="foot">P/NP·F 처리: P는 평점에서 제외, F는 0점으로 반영돼요. 입력값은 이 기기에 저장됩니다.</p>
+<button class="ghost" id="reset">모두 지우기</button>
+</main>
+
+<script>
+var G={"A+":4.5,"A0":4.0,"B+":3.5,"B0":3.0,"C+":2.5,"C0":2.0,"D+":1.5,"D0":1.0,"F":0,"P":null};
+var KEY="gpa-planner-v1";
+var rows=[];
+try{var s=localStorage.getItem(KEY);if(s)rows=JSON.parse(s)}catch(e){}
+if(!Array.isArray(rows)||!rows.length)rows=[{n:"",c:3,g:"A+"},{n:"",c:3,g:"A0"},{n:"",c:3,g:"B+"}];
+
+function save(){try{localStorage.setItem(KEY,JSON.stringify(rows))}catch(e){}}
+function calc(){
+  var pts=0,cr=0;
+  rows.forEach(function(r){var v=G[r.g],c=Number(r.c)||0;if(v===null||v===undefined||c<=0)return;pts+=v*c;cr+=c});
+  return {gpa:cr?pts/cr:0,cr:cr,pts:pts};
+}
+function render(){
+  var el=document.getElementById("list");el.innerHTML="";
+  rows.forEach(function(r,i){
+    var d=document.createElement("div");d.className="row";
+    var opts=Object.keys(G).map(function(k){return '<option'+(k===r.g?' selected':'')+'>'+k+'</option>'}).join("");
+    d.innerHTML='<input placeholder="과목명" aria-label="과목명" value="">'+
+      '<input type="number" min="1" max="6" inputmode="numeric" aria-label="학점">'+
+      '<select aria-label="성적">'+opts+'</select>'+
+      '<button class="del" aria-label="과목 삭제">✕</button>';
+    var f=d.children;
+    f[0].value=r.n;f[1].value=r.c;
+    f[0].oninput=function(){r.n=f[0].value;save()};
+    f[1].oninput=function(){r.c=f[1].value;update()};
+    f[2].onchange=function(){r.g=f[2].value;update()};
+    f[3].onclick=function(){rows.splice(i,1);render();update()};
+    el.appendChild(d);
+  });
+  update();
+}
+function update(){
+  var t=calc();
+  document.getElementById("gpa").textContent=t.gpa.toFixed(2);
+  document.getElementById("cred").textContent=t.cr;
+  document.getElementById("bar").style.width=(t.gpa/4.5*100)+"%";
+  var goal=parseFloat(document.getElementById("goal").value),left=parseFloat(document.getElementById("left").value);
+  var out=document.getElementById("sim");
+  if(!(goal>=0)||!(left>0)){out.textContent="목표 평점과 남은 학점을 입력해 주세요.";save();return}
+  var need=(goal*(t.cr+left)-t.pts)/left;
+  var txt;
+  if(need>4.5)txt='남은 <b class="bad">'+left+'학점</b> 모두 A+를 받아도 목표에 닿지 못해요. 최대 달성 평점은 <b>'+((t.pts+4.5*left)/(t.cr+left)).toFixed(2)+'</b>이에요.';
+  else if(need<=0)txt='지금 성적만 유지해도 목표를 넘겨요. 남은 학점은 <b>F만 피하면</b> 돼요.';
+  else txt='남은 '+left+'학점의 평균 평점이 <b>'+need.toFixed(2)+'</b> 이상이어야 해요.'+(need>=4.0?' A0 이상을 꾸준히 받아야 하는 수준이에요.':need>=3.5?' B+ 이상을 유지하면 돼요.':' 지금 페이스면 충분히 가능해요.');
+  out.innerHTML=txt;save();
+}
+document.getElementById("add").onclick=function(){rows.push({n:"",c:3,g:"A0"});render()};
+document.getElementById("reset").onclick=function(){rows=[{n:"",c:3,g:"A+"}];render()};
+document.getElementById("goal").oninput=update;
+document.getElementById("left").oninput=update;
+render();
+</script>
+</body>
+</html>
